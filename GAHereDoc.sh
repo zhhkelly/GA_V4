@@ -103,6 +103,10 @@ stim[0].pulse.strength     = ${stim_curr}
 FULL
 if ( [ ${stim_num} == 0 ] && [ ${stim_bcl}==0 ] );
 then
+cat<<NOSTIM>>${ParFile_path}/${run_type}.par
+
+NOSTIM
+else
 cat<<STIM>>${ParFile_path}/${run_type}.par
 stim[0].ptcl.npls          = ${stim_num}
 stim[0].ptcl.bcl           = ${stim_bcl}

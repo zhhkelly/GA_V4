@@ -71,7 +71,7 @@ num_Xpoints             = myApp.NumCrossoverPoints.Value;
 % Preallocate struct for storing variant data
 CurrentGen_struct       = struct(...
     "time_data",[],"trace_data",[],"APfeature_data",[],...
-    "adj_data",[],"percent_error",[],"fitness_score",[]);
+    "adj_data",[],"percent_error",[],"fitness_score",[],"variant_id",[]);
 
 %% Initialize openCARP compatible models
 % Initialize model
@@ -98,7 +98,8 @@ if exist(StartGenMat_path, "file")
     start_data=double(start_population(:,2:end));
 else
 % If it doesn't exist, quit the run
-    disp("Checkpoint FAILED: Use the LHS.m to generate a start gen .mat")
+    disp(...
+        "Checkpoint FAILED: Use the LHS.m to make generation_x_adjs.mat")
     disp("Now exiting the GA");
     return
 end
@@ -194,13 +195,21 @@ for gen_counter             = start_gen:end_gen
     % Sum the percent errors for each variant
     % Get the magnitude of sum(percent_errors) since any direction away
     % from an error of zero is unfavorable
-    fitness_scores      = abs(sum(PercentError_array,2));
+    fitness_scores      = sum(PercentError_array,1,'omitnan');
     % Store percent errors and fitness scores in CurrentGen_struct
     for variant_counter = 1 : population_size
         CurrentGen_struct(variant_counter).fitness_score =...
             fitness_scores(variant_counter);
         CurrentGen_struct(variant_counter).percent_error =...
-            PercentError_array(variant_counter,:);
+            PercentError_array(:,variant_counter);
+    end
+    %% Assign Variant IDs.
+    % IDs are necessary to keep track of which vm_exploded_xxx.dat goes
+    % with each parameter set after struct reordering in the next step
+    for variant_counter = 1:population_size
+        variant_id = sprintf(...
+            "%03d", variant_counter);
+        CurrentGen_struct(variant_counter).variant_id = variant_id;
     end
     
     %% Extract elite population
@@ -225,35 +234,53 @@ for gen_counter             = start_gen:end_gen
             CurrentGen_struct_sorted(variant_counter).adj_data';
     end
     
-    % Output elite population scores of each generation into a text file
-    elite_scores                = [CurrentGen_struct_sorted(...
-                                   1:ElitePop_size).fitness_score];
-    ScoreEvo_path               = sprintf(...
-        "./%s/score_evolution.txt",experiment_name);
-    dlmwrite(ScoreEvo_path,elite_scores,'-append')
- 
+%     % Output elite population scores of each generation into a text file
+%     elite_scores                = [CurrentGen_struct_sorted(...
+%                                    1:ElitePop_size).fitness_score];
+%     ScoreEvo_path               = sprintf(...
+%         "./%s/score_evolution.txt",experiment_name);
+%     dlmwrite(ScoreEvo_path,elite_scores,'-append')
+%  
+%% Plot Elite population traces
+    f1 = figure;
+    for variant_counter         = 1:ElitePop_size
+        plot(CurrentGen_struct_sorted(variant_counter).time_data,...
+             CurrentGen_struct_sorted(variant_counter).trace_data,...
+             "DisplayName",...
+             num2str(CurrentGen_struct_sorted(variant_counter).variant_id));
+        hold on
+    end
+    hold off
+    legend('location','eastoutside')
+    SavePlot_path = sprintf(...
+        "./%s/generation_%d/PlotElite_%d",...
+        experiment_name,gen_counter,gen_counter);
+    saveas(gcf, SavePlot_path, 'jpeg');
+    close(f1)
+
      %% Save .mat for Current Generation
     SaveMat_path                = sprintf(...
         "./%s/generation_%d/SortedGeneration_%d.mat",...
         experiment_name, gen_counter, gen_counter);
     save(SaveMat_path, "CurrentGen_struct_sorted")
-    
+     
     %% Plot Feature Distrubution
-    f1 = figure;
-    PlotFeatures_func(... 
-        {CurrentGen_struct.APfeature_data},target_features(:,1),...
-        target_features(:,2));
-    SavePlot_path = sprintf(...
-        "./%s/generation_%d/PlotGen_%d",...
-        experiment_name,gen_counter,gen_counter);
-    saveas(gcf, SavePlot_path, 'fig');
-    close(f1)
+%     f2 = figure;
+%     PlotFeatures_func(... 
+%         {CurrentGen_struct.APfeature_data},target_features(:,1),...
+%         target_features(:,2));
+%     SavePlot_path = sprintf(...
+%         "./%s/generation_%d/PlotGen_%d",...
+%         experiment_name,gen_counter,gen_counter);
+%     saveas(gcf, SavePlot_path, 'fig');
+%     close(f2)
     %% Termination check
     % The algorithm will stop running if there is a variant with all
     % features within the tolerance of the target data.
     
     % Get maximum allowed percent error for each feature.
-    TargetError_array   = abs(target_features(:,2)./target_features(:,1));
+    TargetError_array   = abs(target_features(:,2)...
+                          ./target_features(:,1))*100;
     
     % Check whether the percent error for each parameter for each variant
     % is within the allowed error.
@@ -274,16 +301,16 @@ for gen_counter             = start_gen:end_gen
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
 %% Paced runs
     % External stimulus protocol drives model beating rate
-    if stim_num                     ~= 0
+    if stim_num                 ~= 0
         % Create a overfill population of variants. Whole, even number.
-        TestPool_size = round(MatingPool_size*test_run_factor);
-        if mod(TestPool_size,2)     ~= 0
-           TestPool_size=TestPool_size+1;
+        TestPool_size           = round(MatingPool_size*test_run_factor);
+        if mod(TestPool_size,2) ~= 0
+           TestPool_size        = TestPool_size+1;
         end
         
         % Preallocate array for this overfill population.
         % Each row is a parameter adj, each column is a variant.
-        TestPoolParams_array        = zeros(num_params, TestPool_size);
+        TestPoolParams_array    = zeros(num_params, TestPool_size);
         
 %Tournament selection%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Two variants are chosen from the full population. Their fitness
@@ -589,7 +616,7 @@ function APFeature_array    = APFeatureCheck_func(time_data,AP_data,num_features
 % flag is a multiplier to feature values. Features with physiologically
 % irrelevant values will be flagged. This causes the feature value to be
 % 100 times the target, drastically worsening the fitness score.
-flag                = 100;
+flag                = 1000;
 % Preallocate APFeature_array
 APFeature_array = zeros(num_features,1);
 %TROUGH SEARCH%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -604,12 +631,12 @@ trough_times        = time_data(trough_ind);
 trough_array        = [trough_times,trough_vms];
 num_troughs         = size(trough_array,1);
 
-% If less than 2 troughs, there is repolarization/depolarization faiure.
+% If less than 3 troughs, there is repolarization/depolarization faiure.
 % Return feature check with all inf to mark as irrelevant AP.
 % This will prevent errors thrown in following checks.
-if num_troughs<2
-    for feature_counter = 1:num_features
-        APFeature_array(feature_counter,1) = inf;
+if num_troughs                              < 3
+    for feature_counter                     = 1:num_features
+        APFeature_array(feature_counter,1)  = inf;
     end
     return
 end
@@ -647,7 +674,7 @@ last_AP_data        = AP_data(l_trough_ind:r_trough_ind);
 [local_max,max_ind] = findpeaks(last_AP_data);
 % Need to pick out true peak from post-notch peaks. True peak will
 % always occur before post-notch peak, so get first val from local_max.
-Peak = local_max(1);
+Peak = max(local_max(:));
 
 % Calculate notch depth
 if len_notches~=0
@@ -707,13 +734,13 @@ function PercentError_array = FitnessScore_func(...
 % feature value set for a variant.
 
 % Preallocate array for percent errors
-    PercentError_array  = zeros(length(APfeature_data),...
-                              length(target_features));
-% Each row of PercentError_array is for a variant
-% Each column is for a feature
+   PercentError_array = zeros(length(target_features),length(APfeature_data));
+% Each column of PercentError_array is for a variant
+% Each row  is for a feature
    for variant_counter  = 1:length(APfeature_data)
-       PercentError_array(variant_counter,:) =...
-       (APfeature_data{variant_counter}-target_features)./target_features;
+       PercentError_array(:,variant_counter) =...
+       (abs((APfeature_data{variant_counter}-target_features))...
+       ./target_features)*100;
    end
    
 end
