@@ -6,7 +6,7 @@
 %                                                                         %
 % Authors: Kelly Zhang, Chelsea E. Gibbs, Patrick M. Boyle                %
 % Version: 4.0.0                                                          %
-% Last updated: 1/10/2021                                                 %
+% Last updated: 2/16/2021                                                 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Initialize UI and GA
@@ -19,59 +19,64 @@ catch
     disp("Checkpoint passed: No old UIs open. This is the latest run.")
 end
 
-% Open UI
-%.mlapp version should match name here
-myApp                   = GA_UI_V4; 
-uiwait(myApp.UIFigure);
+try
+    % Open UI
+    %.mlapp version should match name here
+    myApp                   = GA_UI_V4; 
+    uiwait(myApp.UIFigure);
 
-% Experiment-specific Parameters
-model_name              = myApp.ModelName.Value;
-experiment_name         = myApp.ExperimentName.Value;
-population_size         = myApp.PopulationSize.Value;
-ElitePop_size           = myApp.ElitePopulationSize.Value;
-MatingPool_size         = population_size-ElitePop_size;
-ChildrenPop_size        = MatingPool_size;
-start_gen               = myApp.StartGeneration.Value;
-end_gen                 = myApp.EndGeneration.Value;
-sim_dur                 = myApp.SimDuration.Value; %ms
-dt                      = myApp.dt.Value;
-test_run_factor         = 5;
-full_run_factor         = 1;
-% test_run_factor is hard coded. The value is x times the mating pool size.
-% Overfill number of variants to ensure full quiescent population.
-% full_run_factor is 1 since we need to run only the quiescent full pop.
+    % Experiment-specific Parameters
+    model_name              = myApp.ModelName.Value;
+    experiment_name         = myApp.ExperimentName.Value;
+    population_size         = myApp.PopulationSize.Value;
+    ElitePop_size           = myApp.ElitePopulationSize.Value;
+    MatingPool_size         = population_size-ElitePop_size;
+    ChildrenPop_size        = MatingPool_size;
+    start_gen               = myApp.StartGeneration.Value;
+    end_gen                 = myApp.EndGeneration.Value;
+    sim_dur                 = myApp.SimDuration.Value; %ms
+    dt                      = myApp.dt.Value;
+    test_run_factor         = 5;
+    full_run_factor         = 1;
+    % test_run_factor is hard coded as x times the mating pool size.
+    % Overfill number of variants to ensure full quiescent population.
+    % full_run_factor is 1 since we need to run only the quiescent full pop.
 
-% Stiumulus Protocol
-stim_curr               = myApp.StimCurrent.Value;
-stim_dur                = myApp.StimDuration.Value;
-stim_bcl                = myApp.StimBCL.Value;
-stim_num                = myApp.StimNum.Value;
+    % Stiumulus Protocol
+    stim_curr               = myApp.StimCurrent.Value;
+    stim_dur                = myApp.StimDuration.Value;
+    stim_bcl                = myApp.StimBCL.Value;
+    stim_num                = myApp.StimNum.Value;
 
-% Experimental Data
-sample_size             = myApp.Exp_SS.Value;
+    % Experimental Data
+    sample_size             = myApp.Exp_SS.Value;
 
-% The empty quotes are array padding to allow for consistent dimensions
-% even with blanks in the UI input.
-target_features         = str2double([
-    myApp.CL_mean.Value,        myApp.CL_SE.Value,          "";
-    myApp.BPM_mean.Value,       myApp.BPM_SE.Value,         "";
-    myApp.MDP_mean.Value,       myApp.MDP_SE.Value,         "";
-    myApp.Peak_mean.Value,      myApp.Peak_SE.Value,        "";
-    myApp.APA_mean.Value,       myApp.APA_SE.Value,         "";
-    myApp.APD20_mean.Value,     myApp.APD20_SE.Value,       "";
-    myApp.APD50_mean.Value,     myApp.APD50_SE.Value,       "";
-    myApp.APD90_mean.Value,     myApp.APD90_SE.Value,       "";
-    myApp.NotchDepth_mean.Value,myApp.NotchDepth_SE.Value,  "";
-    myApp.vmaxUp_mean.Value,    myApp.vmaxUp_SE.Value,      "";
-]);
+    % The empty quotes are array padding to allow for consistent dimensions
+    % even with blanks in the UI input.
+    target_features         = str2double([
+        myApp.CL_mean.Value,        myApp.CL_SE.Value,          "";
+        myApp.BPM_mean.Value,       myApp.BPM_SE.Value,         "";
+        myApp.MDP_mean.Value,       myApp.MDP_SE.Value,         "";
+        myApp.Peak_mean.Value,      myApp.Peak_SE.Value,        "";
+        myApp.APA_mean.Value,       myApp.APA_SE.Value,         "";
+        myApp.APD20_mean.Value,     myApp.APD20_SE.Value,       "";
+        myApp.APD50_mean.Value,     myApp.APD50_SE.Value,       "";
+        myApp.APD90_mean.Value,     myApp.APD90_SE.Value,       "";
+        myApp.NotchDepth_mean.Value,myApp.NotchDepth_SE.Value,  "";
+        myApp.vmaxUp_mean.Value,    myApp.vmaxUp_SE.Value,      "";
+    ]);
 
-Crossover_checkbox      = myApp.Crossover_checkbox.Value;
-num_Xpoints             = myApp.NumCrossoverPoints.Value;
+    Crossover_checkbox      = myApp.Crossover_checkbox.Value;
+    num_Xpoints             = myApp.NumCrossoverPoints.Value;
 
-% Preallocate struct for storing variant data
-CurrentGen_struct       = struct(...
-    "time_data",[],"trace_data",[],"APfeature_data",[],...
-    "adj_data",[],"percent_error",[],"fitness_score",[],"variant_id",[]);
+    % Preallocate struct for storing variant data
+    CurrentGen_struct       = struct(...
+        "time_data",[],"trace_data",[],"APfeature_data",[],"adj_data",[],...
+        "percent_error",[],"fitness_score",[],"variant_id",[]);
+catch
+    disp("Checkpoint FAILED: UI closed or filled out incorrectly")
+    return
+end
 
 %% Initialize openCARP compatible models
 % Initialize model
@@ -87,59 +92,85 @@ system(MakeModelFileCopies_command)
 
 %% Read in initial population data
 % Check if a starting generation .txt file exists in experiment dir.
-StartGenMat_path = sprintf(...
+StartGen_path       = sprintf(...
+    "./%s/generation_%d/", experiment_name, start_gen);
+StartGenMat_path    = sprintf(...
     "./%s/generation_%d/generation_%d_adjs.mat",...
     experiment_name,start_gen,start_gen);
-if exist(StartGenMat_path, "file")
+if ~exist(StartGen_path, "dir")
+    disp(...
+        ['Checkpoint FAILED: Starting gen directory not found',...
+        'Create generation_x directory and place generation_x_adj.mat'...
+        'within this directory']);
+    return
+elseif  ~exist(StartGenMat_path, "file")
+    disp(...
+        ['Checkpoint FAILED: Starting gen adjustment values not found.'...
+        'Use the LHS.m to make generation_x_adjs.mat'...
+        'Place generation_x_adjs.mat in generation_x directory']);
+    return
+else
     disp("Checkpoint passed: starting generation .mat exists in dir")
     start_population=load(StartGenMat_path);
     start_population=struct2array(start_population);
     ParamOrder_array=string(start_population(:,1));
     start_data=double(start_population(:,2:end));
-else
-% If it doesn't exist, quit the run
-    disp(...
-        "Checkpoint FAILED: Use the LHS.m to make generation_x_adjs.mat")
-    disp("Now exiting the GA");
-    return
 end
 
-%% Make the .par files specific to the experiment
-% Execute the GAHereDoc.sh to make a .par file for running FULL CARP sims
-ParamOrder_string           = sprintf("%s ",ParamOrder_array);
-GAHereDoc_command           = sprintf(...
-    "bash -u ./GAHereDoc.sh %s %s %s %d %d %d %d %d %d %d %d %s",...
-    "full_runs",experiment_name,model_name,start_gen,population_size,...
-    stim_bcl,stim_num,stim_dur,stim_curr,sim_dur,...
-    test_run_factor,ParamOrder_string);
-system(GAHereDoc_command);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Initialize the starting generation
+    %% Make the .par files specific to the experiment
+    % Execute the GAHereDoc.sh to make a .par file for running FULL sims
+    ParamOrder_string           = sprintf("%s ",ParamOrder_array);
+    GAHereDoc_command           = sprintf(...
+        "bash -u ./GAHereDoc.sh %s %s %s %d %d %d %d %d %d %d %d %s",...
+        "full_runs",experiment_name,model_name,start_gen,population_size,...
+        stim_bcl,stim_num,stim_dur,stim_curr,sim_dur,...
+        test_run_factor,ParamOrder_string);
+    system(GAHereDoc_command);
 
-%% Make the full-population-sized mesh specific to the experiment
-FullMesh_path               = sprintf(...
-    "./%s", experiment_name);
-MakeLineMesh_test_command   = sprintf(... 
-    "bash -u ./MakeLineMesh.sh %s %d %s",...
-FullMesh_path, population_size,"full_runs");
-system(MakeLineMesh_test_command)
+    %% Make the full-population-sized mesh specific to the experiment
+    FullMesh_path               = sprintf(...
+        "./%s", experiment_name);
+    MakeLineMesh_test_command   = sprintf(... 
+        "bash -u ./MakeLineMesh.sh %s %d %s",...
+    FullMesh_path, population_size,"full_runs");
+    system(MakeLineMesh_test_command)
+    
+    %% Make the run_type directory within the generation directory
+    MakeRuntypeDir_command      = sprintf(...
+        "mkdir ./%s/generation_%d/%s",experiment_name,...
+        start_gen,"full_runs");
+    system(MakeRuntypeDir_command);
 
-%% Make the run_type directory within the generation directory
-MakeRuntypeDir_command      = sprintf(...
-    "mkdir ./%s/generation_%d/%s", experiment_name, start_gen, "full_runs");
-system(MakeRuntypeDir_command);
-
-%% Make the .adj files for each parameter for starting generation
-% The starting population requires a full-run initialization before
-% iterating through further generations
-MakeAdjlFile_func(experiment_name, start_gen,"full_runs",...
-    length(ParamOrder_array),ParamOrder_array, population_size,start_data);
-
-%% Execute the RunCarpSim.sh for starting generation
-% Runs each variant simulation in full to generate the vm_exploded_xxx.dats
-RunCarpSim_command          = sprintf(...
-    "bash -u ./RunCarpSim_V4.sh %d %s %s %s %d %d",...
-    start_gen,"full_runs",model_name,experiment_name,...
-    population_size,sim_dur);
-system(RunCarpSim_command);
+    %% Make the .adj files for each parameter for starting generation
+    % The starting population requires a full-run initialization before
+    % iterating through further generations
+    MakeAdjlFile_func(experiment_name, start_gen,"full_runs",...
+        length(ParamOrder_array),ParamOrder_array,...
+        population_size,start_data);
+    
+   %% Check for initialization
+   % Get number of vm_exploded_xxx.dat files in full runs
+   FullRuns_info = dir(sprintf(...
+       "%s/full_runs/vm_exploded*.dat", StartGen_path));
+   % If number of files equals the expected population size,
+   % the starting gen has already been initialized. Continue to GA
+   FullRuns_size = size(FullRuns_info, 1);
+   
+if FullRuns_size == population_size
+    disp("Checkpoint passed: Starting generation already initialized")
+else
+    %% Execute the RunCarpSim.sh for starting generation
+    % Runs each variant simulation in full to generate
+    % the vm_exploded_xxx.dats
+    RunCarpSim_command          = sprintf(...
+        "bash -u ./RunCarpSim_V4.sh %d %s %s %s %d %d",...
+        start_gen,"full_runs",model_name,experiment_name,...
+        population_size,sim_dur);
+    system(RunCarpSim_command);
+    disp("Checkpoint passed: starting generation has been initialized")
+end
 
 %% Begin iterating through generations
 for gen_counter             = start_gen:end_gen  
@@ -158,11 +189,16 @@ for gen_counter             = start_gen:end_gen
         % save vm_exploded_xxx.dat contents as array
         VmExploded_data     = fscanf(file_ID,format_Spec,array_size)';
         fclose(file_ID);
-        % save time and voltage data to tablecl
+        % save time and voltage data to table
         CurrentGen_struct(pop_counter).time_data        =... 
             VmExploded_data(:,1);
         CurrentGen_struct(pop_counter).trace_data       =... 
             VmExploded_data(:,2);
+        % save variant ID to table
+        % IDs are necessary to keep track of which vm_exploded_xxx.dat goes
+        % with each parameter set after struct reordering
+        CurrentGen_struct(pop_counter).variant_id       =...
+            variant_id;
     end
 
     %% Consolidate AP morphological feature data
@@ -202,14 +238,6 @@ for gen_counter             = start_gen:end_gen
             fitness_scores(variant_counter);
         CurrentGen_struct(variant_counter).percent_error =...
             PercentError_array(:,variant_counter);
-    end
-    %% Assign Variant IDs.
-    % IDs are necessary to keep track of which vm_exploded_xxx.dat goes
-    % with each parameter set after struct reordering in the next step
-    for variant_counter = 1:population_size
-        variant_id = sprintf(...
-            "%03d", variant_counter);
-        CurrentGen_struct(variant_counter).variant_id = variant_id;
     end
     
     %% Extract elite population
@@ -264,7 +292,7 @@ for gen_counter             = start_gen:end_gen
         experiment_name, gen_counter, gen_counter);
     save(SaveMat_path, "CurrentGen_struct_sorted")
      
-    %% Plot Feature Distrubution
+    %% Plot Feature Distribution
 %     f2 = figure;
 %     PlotFeatures_func(... 
 %         {CurrentGen_struct.APfeature_data},target_features(:,1),...
@@ -274,6 +302,46 @@ for gen_counter             = start_gen:end_gen
 %         experiment_name,gen_counter,gen_counter);
 %     saveas(gcf, SavePlot_path, 'fig');
 %     close(f2)
+    %% Plot Feature Distribution II
+    f2 = figure;
+    feature_labels          = ["CL","BPM","MDP","Peak","AP Amplitude",...
+        "APD20","APD50","APD90","Notch Depth","VmaxUp"];
+    available_features_ind  = ~isnan(target_features(:,1));
+    available_means         = target_features(available_features_ind,1);
+    available_SEs           = target_features(available_features_ind,2);
+    num_plots               = nnz(available_features_ind);
+    plot_rows               = ceil(sqrt(num_plots));
+    plot_columns            = plot_rows;
+    tiledlayout(plot_rows, plot_columns);
+    FeatureData_ToPlot      = zeros(num_plots,population_size);
+    labels_ToPlot = feature_labels(available_features_ind);
+    
+    for variant_counter                         = 1:population_size
+        variant_feature_data                    = ...
+            CurrentGen_struct_sorted(variant_counter).APfeature_data;
+        FeatureData_ToPlot(:,variant_counter)   = variant_feature_data(...
+            available_features_ind);     
+    end
+    
+    for plot_counter    = 1:num_plots
+        nexttile
+        h1              = histogram(FeatureData_ToPlot(plot_counter,:));
+        try 
+            h1.BinWidth     = available_SEs(plot_counter);
+        catch
+            fprintf("Warning: using default BinWidth for plot %d\n",...
+                plot_counter)
+        end
+        hold on
+        xlabel(labels_ToPlot(plot_counter))
+        ylabel("number of variants")
+    end
+     SavePlot_path = sprintf(...
+        "./%s/generation_%d/FeatureDistribution_%d",...
+        experiment_name,gen_counter,gen_counter);
+    saveas(gcf, SavePlot_path, 'jpeg');
+    close(f2)
+    
     %% Termination check
     % The algorithm will stop running if there is a variant with all
     % features within the tolerance of the target data.
@@ -345,6 +413,13 @@ for gen_counter             = start_gen:end_gen
         % This is an optional operator. If skipped, the child population
         % will be a duplicate of the test pool.
         if Crossover_checkbox                == true
+            if num_Xpoints <= num_params
+            else
+                num_Xpoints = round( num_params / 2 );
+                disp(["Warning: Number of crossover points exceeds"...
+                    "number of model parameters. Number of crossover"...
+                    "points defaulted to round( num_params / 2 )"]);
+            end
             TestChildParams_array            = CrossOver_func(...
                 TestPoolParams_array,PairedVariants_array,num_Xpoints);
         else
@@ -369,7 +444,7 @@ for gen_counter             = start_gen:end_gen
         % no point of running it longer
         
        GAHereDoc_command            = sprintf(...
-            "bash -u ./GAHereDoc.sh %s %s %s %d %d %d %d %d %d %d %d  %s",...
+            "bash -u ./GAHereDoc.sh %s %s %s %d %d %d %d %d %d %d %d %s",...
             "test_runs",experiment_name,model_name,gen_counter+1,...
             population_size,stim_bcl,stim_num,stim_dur,stim_curr,...
             stim_bcl,test_run_factor,ParamOrder_string);
@@ -404,7 +479,7 @@ for gen_counter             = start_gen:end_gen
             "test_runs",model_name,experiment_name,TestPool_size,stim_bcl);
         system(RunCarpSim_command)
         
-%Read in the quiescent variants file %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Read in the quiescent variants file %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         QuiescentVariants_path      = sprintf(...
             "./%s/generation_%d/%s/quiescent_variants.txt",....
             experiment_name,gen_counter+1,"test_runs");
@@ -415,16 +490,13 @@ for gen_counter             = start_gen:end_gen
         fclose(QV_ID);
         
 %Calculate new test_run_factor%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% CURRENTLY KEPT STATIC.
-        % Calculate proportion of TestPool_size that was quiescent
-        % Add 20% of population as buffer
-        %test_run_factor = (nnz(QuiescentVariants_array)+...
-            %(0.2*TestPool_size))/TestPool_size;
-        
-        % In case factor goes below 1.2, re-initialize
-        %if test_run_factor < 1.2
-            % test_run_factor = 1.2;
-        %end
+        adjusted_test_run_factor    = ( 1.2 * ( TestPool_size ) )...
+            / nnz( QuiescentVariants_array );
+        if adjusted_test_run_factor <= population_size
+            % Don't decrease test_run_factor
+        else
+            test_run_factor         = adjusted_test_run_factor;
+        end
         
 %Trim population%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Preallocate array for quiescent variants' parameters
@@ -574,7 +646,7 @@ for gen_counter             = start_gen:end_gen
         system(RunCarpSim_command)
     else
         disp(...
-        "Checkpoint FAILED: If non-paced stim BCL and Num must equal 0");
+        "Checkpoint FAILED: If non-paced, stim BCL and Num must equal 0");
     end
 end
 %%
@@ -612,13 +684,16 @@ function MakeAdjlFile_func(...
 end
 
 %% AP Morphological Feature Check Function
-function APFeature_array    = APFeatureCheck_func(time_data,AP_data,num_features)
+function APFeature_array    = APFeatureCheck_func(...
+    time_data,AP_data,num_features)
+
 % flag is a multiplier to feature values. Features with physiologically
 % irrelevant values will be flagged. This causes the feature value to be
 % 100 times the target, drastically worsening the fitness score.
-flag                = 1000;
+flag                = 10;
 % Preallocate APFeature_array
 APFeature_array = zeros(num_features,1);
+
 %TROUGH SEARCH%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Get the values and indices of most negative Vms 
 [local_min,min_ind] = findpeaks(-AP_data);
@@ -714,7 +789,10 @@ for x               = 1:length(APDx)
     try
         APDx(x,2)   = APDx_time-dvdtMax_time;
     catch
-        APDx(x,2)   = APDx_vm*flag;     
+        for feature_counter = 1:num_features
+        APFeature_array(feature_counter,1) = inf;
+        end 
+        return    
     end
     
 end
@@ -739,8 +817,8 @@ function PercentError_array = FitnessScore_func(...
 % Each row  is for a feature
    for variant_counter  = 1:length(APfeature_data)
        PercentError_array(:,variant_counter) =...
-       (abs((APfeature_data{variant_counter}-target_features))...
-       ./target_features)*100;
+       (abs((APfeature_data{variant_counter}-target_features)...
+       ./target_features))*100;
    end
    
 end
@@ -815,6 +893,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Data Visualization Functions                                           %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Not used in GA_V4 4.0.0
 function PlotFeatures_func(...
     APfeature_data,target_features,target_SE)
     % APfeature_data should be a cell containing arrays. Each array is the
@@ -861,7 +940,7 @@ function PlotFeatures_func(...
         % y-coordinate is the value for a feature
         y = APfeature_array(tile_counter,:);
         % Define graph limits
-        boundaries = [0, num_variants];
+        b oundaries = [0, num_variants];
         
         % Shade the target feature range
         area(boundaries,[top_line,top_line],bot_line);
